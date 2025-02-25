@@ -1,0 +1,47 @@
+from flask import Flask, render_template, request, redirect, url_for
+from fer import FER
+import cv2
+import os
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = 'static/uploads/'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/detect', methods=['POST'])
+def detect():
+    if 'file' not in request.files:
+        return redirect(url_for('home'))
+
+    file = request.files['file']
+    if file.filename == '':
+        return redirect(url_for('home'))
+
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+    file.save(file_path)
+
+    detector = FER()
+    image = cv2.imread(file_path)
+    emotions = detector.detect_emotions(image)
+    dominant_emotion, emotion_score = detector.top_emotion(image)
+
+    for face in emotions:
+        x, y, width, height = face['box']
+        cv2.rectangle(image, (x, y), (x + width, y + height), (0, 255, 0), 2)
+        emotion_label = f"{dominant_emotion} ({emotion_score:.2f})"
+        cv2.putText(image, emotion_label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'output_' + file.filename)
+    cv2.imwrite(output_path, image)
+
+    return render_template('result.html', image_path=output_path, emotion=dominant_emotion, score=emotion_score)
+
+if __name__ == '__main__':
+    app.run(debug=True)
